@@ -1,0 +1,190 @@
+version: '3.1'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: ./apps/gateway/Dockerfile
+      target: development
+    command: pnpm run start:dev gateway
+    env_file:
+      - ./apps/gateway/.env
+    ports:
+      - '3000:3000'
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+
+  user:
+    build:
+      # 도카파일 가져올 위치
+      context: .
+      # 도커파일 위치
+      dockerfile: ./apps/user/Dockerfile
+      # 빌드 페이즈 지정
+      target: development
+    # 도커 컴포즈 파일에서 실행할 명령어
+    # 도커파일과 컴포즈 파일 두개존재하면 컴포즈파일 명령어 오버라이드
+    command: pnpm run start:dev user
+    depends_on:
+      # DB가 실행됐을 때 서버실행
+      postgres_user:
+        condition: service_healthy
+    env_file:
+      - ./apps/user/.env
+    volumes:
+      # 로컬PC위치 : 도커컨테이너 내부 실행위치
+      # 도커컴포즈에서는 파일이 변경되면 컨테이너로 실행되고 있는 앱에 실시간으로 반영 가능, 자동 재시작
+      - .:/usr/src/app
+      # 컨테이너 안에 존재하는 node_modules폴더는 동기화 하지 않음
+      # 다른 OS 윈도우, 리눅스 각각 OS에 맞는 모듈 파일이 생성되어 있기때문에
+      - /usr/src/app/node_modules
+
+  postgres_user:
+    image: postgres:16
+    # 환경변수 설정
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+
+    ports:
+      - '6001:5432'
+    volumes:
+      # 호스트PC디렉토리위치:컨테이너 내부에 데이터를 저장할 위치
+      - ./postgres/user:/var/lib/postgresql/data
+    healthcheck:
+      # 서버 상태 확인
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  product:
+    build:
+      context: .
+      dockerfile: ./apps/product/Dockerfile
+      target: development
+    command: pnpm run start:dev product
+    depends_on:
+      postgres_product:
+        condition: service_healthy
+    env_file:
+      - ./apps/product/.env
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+
+  postgres_product:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - '6002:5432'
+    volumes:
+      - ./postgres/product:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  order:
+    build:
+      context: .
+      dockerfile: ./apps/order/Dockerfile
+      target: development
+    command: pnpm run start:dev order
+    depends_on:
+      mongo_order:
+        condition: service_healthy
+    env_file:
+      - ./apps/order/.env
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+
+  mongo_order:
+    image: mongo:8
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongo
+      MONGO_INITDB_ROOT_PASSWORD: mongo
+    ports:
+      - '6003:27017'
+    volumes:
+      - ./mongo/order:/data/lib
+    command: mongod --quiet --logpath /dev/null
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  payment:
+    build:
+      context: .
+      dockerfile: ./apps/payment/Dockerfile
+      target: development
+    command: pnpm run start:dev payment
+    depends_on:
+      postgres_payment:
+        condition: service_healthy
+    env_file:
+      - ./apps/payment/.env
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+
+  postgres_payment:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - '6005:5432'
+    volumes:
+      - ./postgres/payment:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  notification:
+    build:
+      context: .
+      dockerfile: ./apps/notification/Dockerfile
+      target: development
+    command: pnpm run start:dev notification
+    depends_on:
+      mongo_notification:
+        condition: service_healthy
+    env_file:
+      - ./apps/notification/.env
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+
+  mongo_notification:
+    image: mongo:8
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongo
+      MONGO_INITDB_ROOT_PASSWORD: mongo
+    ports:
+      - '6006:27017'
+    volumes:
+      - ./mongo/notification:/data/lib
+    command: mongod --quiet --logpath /dev/null
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
